@@ -1,0 +1,8 @@
+# Package your application with Docker
+
+This repository contains demo and slides for my talk during the Capgemini Craftsmanship Community
+
+## Copyright and Licensing
+
+Copyright (C) 2018 Krzysztof Sobkowiak +
+Free use of this software is granted under the terms of the link:LICENSE[Apache License].
