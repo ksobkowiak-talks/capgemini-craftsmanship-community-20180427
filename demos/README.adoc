@@ -21,9 +21,217 @@ Pull the necessary images to make the later demo simply
 [source, bash]
 ----
 $ docker pull openjdk:latest
+$ docker pull openjdk:8-jre
+$ docker pull postgres:latest
+----
+
+### Configure your environment to use Docker from Docker Machine
+
+[source, bash]
+----
+$ docker-machine env default
+export DOCKER_TLS_VERIFY="1"
+export DOCKER_HOST="tcp://192.168.99.100:2376"
+export DOCKER_CERT_PATH="/home/kso/.docker/machine/machines/ms"
+export DOCKER_MACHINE_NAME="ms"
+# Run this command to configure your shell:
+# eval $(docker-machine env default)
+
+$ eval $(docker-machine env default)
+----
+
+## Install the PostgreSQL database
+
+. Create a volumen
++
+[source, bash]
+----
+$ docker volume create pgdata
+----
++
+. Run the PostgreSQL container
++
+[source, bash]
+----
+$ docker run --name itemsdb -d -e POSTGRES_PASSWORD=items -e POSTGRES_USER=items -e POSTGRES_DB=items -p 5432:5432 -v pgdata:/var/lib/postgresql/data postgres
+----
++
+. Check the database
++
+[source, bash]
+----
+$ docker ps
+CONTAINER ID        IMAGE                   COMMAND                  CREATED             STATUS              PORTS                    NAMES
+dd20def2294f        postgres                "docker-entrypoint.s…"   2 hours ago         Up 2 hours          0.0.0.0:5432->5432/tcp   itemsdb
+
+$ docker exec -it itemsdb bash
+root@dd20def2294f:/# psql -U items
+psql (10.3 (Debian 10.3-1.pgdg90+1))
+Type "help" for help.
+
+items=#
+----
+
+
+## Spring Boot demo
+
+### Implement simple `itemservice` application
+
+. Create a new Spring Boot application using link:https://start.spring.io/[Spring Initializr] or JBoss Forge extension in your IDE.
++
+TBD
++
+. Start the application locally and test it
++
+[source, bash]
+----
+$ mvn spring-boot:run
+$ curl -s http://localhost:8080/ip
+$ curl -s http://localhost:8080/items
 ----
 
 
 
+### Deploy the `itemservice` using the `Dockerfile`
 
-docker run --name itemsdb -d -e POSTGRES_PASSWORD=items -e POSTGRES_USER=items -e POSTGRES_DB=items -p 5432:5432 postgres
+. Preapre a `Dockerfile` to be used to build the container
++
+[source, dockerfile]
+----
+FROM openjdk:8-jre
+
+ADD target/itemservice.jar .
+
+EXPOSE 8090
+ENTRYPOINT ["/usr/bin/java", "-jar", "-Dspring.profiles.active=postgresql", "itemservice.jar"]
+----
+. Build the image
++
+[source, bash]
+----
+$ docker build . -t sobkowiak/itemservice
+
+$ docker images
+REPOSITORY                        TAG                 IMAGE ID            CREATED             SIZE
+sobkowiak/itemservice             latest              e0e8d458c945        4 seconds ago       625MB
+openjdk                           latest              ab0ecda9094c        2 weeks ago         610MB
+----
+. Run the `itemservice` container
++
+[source, bash]
+----
+$ docker run --name itemservice -d -p 8090:8090 sobkowiak/itemservice
+----
+. This operation should fail due to unknown host `itemsdb` in the configuration of the PostgreSQL connection
+
+### Deploy the service using links (!!!deprecated!!!)
+
+. Deploy the service
++
+[source, bash]
+----
+$ docker run --name itemservice -d -p 8090:8090 --link itemsdb:itemsdb sobkowiak/itemservice
+$ curl http://$(docker-machine ip ms):8090/ip
+----
++
+. Test the service
++
+[source, bash]
+----
+$ curl http://$(docker-machine ip):8090/items
+[{"id":1,"name":"A"},{"id":2,"name":"B"},{"id":3,"name":"C"},{"id":4,"name":"D"}]
+----
+
+### Create a network for the demo
+
+[source, bash]
+----
+$ docker network create --driver bridge itemservice
+
+$ docker network ls
+NETWORK ID          NAME                DRIVER              SCOPE
+d2123178d9e9        bridge              bridge              local
+dc654d93c6f3        host                host                local
+4edf049dc8ff        itemservice         bridge              local
+3f5d4dd8bda6        none                null                local
+----
+
+### Deploy the service using network
+
+. Recreate the PostgreSQL container using the network
++
+[source, bash]
+----
+$ docker run --name itemsdb -d -e POSTGRES_PASSWORD=items -e POSTGRES_USER=items -e POSTGRES_DB=items -p 5432:5432 --network itemservice -v pgdata:/var/lib/postgresql/data postgres
+----
++
+. Deploy the service
++
+[source, bash]
+----
+$ docker run --name itemservice -d -p 8090:8090 --network itemservice sobkowiak/itemservice
+$ curl http://$(docker-machine ip ms):8090/ip
+----
++
+. Test the service
++
+[source, bash]
+----
+$ curl http://$(docker-machine ip):8090/items
+[{"id":1,"name":"A"},{"id":2,"name":"B"},{"id":3,"name":"C"},{"id":4,"name":"D"}]
+----
+
+### Build/run the docker image using maven plugin
+
+. Add `docker-maven-plugin` to the `pom.xml` file
++
+[source, xml]
+----
+  <plugin>
+    <groupId>io.fabric8</groupId>
+    <artifactId>docker-maven-plugin</artifactId>
+    <version>0.21.0</version>
+    <configuration>
+      <images>
+        <image>
+          <alias>itemservice</alias>
+          <name>sobkowiak/itemservice:latest</name>
+          <build>
+            <from>openjdk:8-jre</from>
+            <assembly>
+              <descriptorRef>artifact</descriptorRef>
+            </assembly>
+            <cmd>java -jar maven/${project.artifactId}.jar
+            </cmd>
+          </build>
+          <run>
+            <network>
+              <mode>custom</mode>
+              <name>itemservice</name>
+              <alias>itemservice</alias>
+            </network>
+          </run>
+        </image>
+      </images>
+    </configuration>
+  </plugin>
+----
+. Build the image
++
+[source, bash]
+----
+mvn docker:build
+----
+. Run the image
++
+[source, bash]
+----
+mvn docker:start
+----
+
+### Run the demo using Docker Compose
+
+[source, bash]
+----
+$ docker-compose up -d
+----

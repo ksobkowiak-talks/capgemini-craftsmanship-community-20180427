@@ -1,12 +1,12 @@
-package com.capgemini.cc.demos.docker.itemservice;
+package com.capgemini.cc.demos.docker;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class ItemserviceApplication {
+public class DemoserviceApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(ItemserviceApplication.class, args);
+		SpringApplication.run(DemoserviceApplication.class, args);
 	}
 }
