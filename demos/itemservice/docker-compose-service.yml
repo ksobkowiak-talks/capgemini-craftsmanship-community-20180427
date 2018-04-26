@@ -1,0 +1,26 @@
+version: "3"
+
+services:
+
+
+  itemservice:
+    image: sobkowiak/itemservice:latest
+    ports:
+    - "8090:8090"
+    networks:
+    - itemservice
+    deploy:
+      mode: replicated
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "1"
+          memory: 500M
+
+volumes:
+  pgdata:
+
+networks:
+  itemservice:
